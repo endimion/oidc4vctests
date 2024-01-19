@@ -8,7 +8,7 @@ import fs from "fs";
 import jose from "node-jose";
 import { Resolver } from "did-resolver";
 import { getResolver } from "@cef-ebsi/key-did-resolver";
-import jwkToPem from "jwk-to-pem"
+import jwkToPem from "jwk-to-pem";
 
 const app = express();
 
@@ -18,7 +18,7 @@ const privateKey = fs.readFileSync("./private-key.pem", "utf-8");
 const publicKeyPem = fs.readFileSync("./public-key.pem", "utf-8");
 
 const ngrok =
-  "https://f3a3-2a02-587-2809-9100-6c1e-53d1-4bab-6fdb.ngrok-free.app";
+  "https://8d15-2a02-587-2809-9100-e86a-b83f-360-691b.ngrok-free.app";
 
 // Convert PEM to JWK
 const keystore = jose.JWK.createKeyStore();
@@ -134,7 +134,7 @@ app.post("/direct_post", async (req, res) => {
   let header = getHeaderFromToken(vp);
   // console.log(header);
   let kid = header.kid;
-  let issuerJwk = header.jwk
+  let issuerJwk = header.jwk;
   if (kid.includes("did:key")) {
     const keyResolver = getResolver();
     const didResolver = new Resolver(keyResolver);
@@ -142,20 +142,26 @@ app.post("/direct_post", async (req, res) => {
     // console.log(doc);
   }
   const pem = jwkToPem(issuerJwk);
-  const decoded = jwt.verify(vp, pem);
+  const decoded = jwt.verify(vp, pem, { ignoreNotBefore: true });
   //console.log(decoded)
-  const vcs = decoded.vp.verifiableCredential
+  const vcs = decoded.vp.verifiableCredential;
   let vcHeader;
-  let vcKid; 
-  vcs.forEach(vc => {
+  let vcKid;
+  vcs.forEach(async (vc) => {
     vcHeader = getHeaderFromToken(vc);
+    console.log(vcHeader);
     vcKid = vcHeader.kid;
-    let jwk = fromP521KeyToJWK(vcKid.replace("did:key:",""))
-    console.log(jwk)
-
+    let didKey = vcKid.split("#")[0];
+    const keyResolver = getResolver();
+    const didResolver = new Resolver(keyResolver);
+    let didDoc = await didResolver.resolve(didKey); //this is a multibase encoded string
+    let innerJwk= didDoc.didDocument.verificationMethod[0].publicKeyJwk
+    console.log("INNER JWK")
+    console.log(innerJwk)
+    const innerPem = jwkToPem(innerJwk);
+    let decodedVC = jwt.verify(vp, innerPem, { ignoreNotBefore: true });
+    console.log(decodedVC);
   });
-
-
 
   res.sendStatus(200);
 });
@@ -220,10 +226,10 @@ function buildVP(
     "&scope=openid" +
     // "&response_uri="+
     // encodeURIComponent(redirect_uri) +
-    "&request_uri="+request_uri+
-
+    "&request_uri=" +
+    request_uri +
     "&redirect_uri=" +
-    "https://f3a3-2a02-587-2809-9100-6c1e-53d1-4bab-6fdb.ngrok-free.app/direct_post" + //+encodeURIComponent(redirect_uri) +
+    encodeURIComponent(redirect_uri) +
     "&response_mode=direct_post" +
     "&state=" +
     state +
@@ -250,23 +256,43 @@ function getHeaderFromToken(token) {
   return decodedToken.header;
 }
 
-function fromP521KeyToJWK(publicKeyHex){
-  let pkey = publicKeyHex.split("#") [0]
-  console.log(pkey)
-  const publicKeyBuffer = Buffer.from(pkey, 'hex');
+function fromP521KeyToJWK(publicKeyHex) {
+  let pkey = publicKeyHex.split("#")[0];
+  console.log("public key");
+  console.log(pkey);
+  // The encoded public key
+
+  // Base64Url decode
+  const decodedPublicKeyBinary = atob(
+    pkey.replace(/-/g, "+").replace(/_/g, "/")
+  );
+
+  // Convert binary data to hexadecimal
+  const decodedPublicKeyHex = Array.from(decodedPublicKeyBinary)
+    .map((byte) => byte.charCodeAt(0).toString(16).padStart(2, "0"))
+    .join("");
+
+  // Output the result
+  const cleanedHex = decodedPublicKeyHex.replace("#", "");
+
+  // Convert the cleaned hex to Buffer
+  const publicKeyBuffer = Buffer.from(cleanedHex, "hex");
+  console.log(publicKeyBuffer.length);
+  // Check if the buffer length is as expected (132 bytes for P-521)
+  //   if (publicKeyBuffer.length !== 132) {
+  //     throw new Error("Invalid P-521 public key length");
+  //   }
 
   // Convert the Buffer to a JSON Web Key (JWK)
   const jwk = {
-    kty: 'EC',
-    crv: 'P-521',
-    x: publicKeyBuffer.slice(0, 66).toString('base64url'),
-    y: publicKeyBuffer.slice(66).toString('base64url'),
+    kty: "EC",
+    crv: "P-521",
+    x: publicKeyBuffer.slice(0, 66).toString("base64url"),
+    y: publicKeyBuffer.slice(66).toString("base64url"),
   };
-  return jwk
+
+  return jwk;
 }
- 
-
-
 
 // Start the server
 app.listen(port, () => {
