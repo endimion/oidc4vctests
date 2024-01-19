@@ -156,10 +156,10 @@ app.post("/direct_post", async (req, res) => {
     const didResolver = new Resolver(keyResolver);
     let didDoc = await didResolver.resolve(didKey); //this is a multibase encoded string
     let innerJwk= didDoc.didDocument.verificationMethod[0].publicKeyJwk
-    console.log("INNER JWK")
-    console.log(innerJwk)
+    // console.log("INNER JWK")
+    // console.log(innerJwk)
     const innerPem = jwkToPem(innerJwk);
-    let decodedVC = jwt.verify(vp, innerPem, { ignoreNotBefore: true });
+    let decodedVC = jwt.verify(vc, innerPem, { ignoreNotBefore: true });
     console.log(decodedVC);
   });
 
