@@ -18,7 +18,7 @@ const privateKey = fs.readFileSync("./private-key.pem", "utf-8");
 const publicKeyPem = fs.readFileSync("./public-key.pem", "utf-8");
 
 const ngrok =
-  "https://8d15-2a02-587-2809-9100-e86a-b83f-360-691b.ngrok-free.app";
+  "https://78f9-2a02-587-2801-dc00-f525-5887-eafc-f309.ngrok-free.app";
 
 // Convert PEM to JWK
 const keystore = jose.JWK.createKeyStore();
@@ -226,7 +226,7 @@ function buildVP(
     "&scope=openid" +
     // "&response_uri="+
     // encodeURIComponent(redirect_uri) +
-    "&request_uri=" +
+    "&response_uri=" +
     request_uri +
     "&redirect_uri=" +
     encodeURIComponent(redirect_uri) +
