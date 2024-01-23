@@ -18,7 +18,9 @@ const privateKey = fs.readFileSync("./private-key.pem", "utf-8");
 const publicKeyPem = fs.readFileSync("./public-key.pem", "utf-8");
 
 const ngrok =
-  "https://78f9-2a02-587-2801-dc00-f525-5887-eafc-f309.ngrok-free.app";
+  "https://2b75-2a02-587-2801-dc00-ae47-b525-c988-6c56.ngrok-free.app";
+
+let presentationDefinitionParam;
 
 // Convert PEM to JWK
 const keystore = jose.JWK.createKeyStore();
@@ -53,7 +55,7 @@ let jwtToken = "";
 app.get("/makeVP", async (req, res) => {
   try {
     // Get the presentation_definition parameter
-    const presentationDefinitionParam = {
+    presentationDefinitionParam = {
       id: "vp token example",
       format: {
         jwt_vc: { alg: ["ES256"] },
@@ -79,34 +81,37 @@ app.get("/makeVP", async (req, res) => {
         },
       ],
     };
+    //passport
+
     const uuid = uuidv4();
 
     //url.searchParams.get("presentation_definition");
     const stateParam = uuidv4();
-    const redirect_uri = ngrok + "/direct_post";
-
     const nonce = generateNonce(16);
+
+    let request_uri = ngrok + "/vpRequest";
+    const response_uri = ngrok + "/direct_post";
 
     jwtToken = buildJwt(
       presentationDefinitionParam.input_descriptors,
       stateParam,
       nonce,
-      redirect_uri,
+      ngrok,
       uuid,
-      redirect_uri
+      response_uri,
+      request_uri
     );
 
-    let request_uri = ngrok + "/vpRequest";
-    const responseMessage = buildVP(
-      redirect_uri,
-      redirect_uri,
+    const vpRequest = buildVP(
+      ngrok,
+      response_uri,
       request_uri,
       stateParam,
       nonce,
       encodeURIComponent(JSON.stringify(presentationDefinitionParam))
     );
 
-    res.json({ vpRequest: responseMessage });
+    res.json({ vpRequest: vpRequest });
   } catch (err) {
     console.log(err);
     const responseMessage = "Hello, this is the /test endpoint!";
@@ -119,8 +124,230 @@ app.get(["/", "/jwks"], (req, res) => {
   res.json({ keys: jwks });
 });
 
+//this doesn't seem to be called by iGrant.io !!
 app.get("/vpRequest", async (req, res) => {
+  console.log("VPRequest called Will send");
+  // console.log(jwtToken);
   res.type("text/plain").send(jwtToken);
+});
+
+//.well-known endpoint, this is normally for the issuer should not be required for the verifier... right??
+// iGrant.io is calling this endpoint client_id+/.well-knonw/openid-credential-issuer to get some metadata about the
+// requester to display in the wallet
+app.get("/.well-known/openid-credential-issuer", async (req, res) => {
+  console.log(".well-known/openid-credential-issuer called Will send");
+
+  res.type("text/plain").send({
+    credential_issuer: "https://sweden-eudi-wallet.igrant.io",
+    authorization_server: "https://sweden-eudi-wallet.igrant.io",
+    credential_endpoint: "https://sweden-eudi-wallet.igrant.io/credential",
+    deferred_credential_endpoint:
+      "https://sweden-eudi-wallet.igrant.io/credential_deferred",
+    display: {
+      name: "University of the Aegean",
+      location: "Greece",
+      locale: "en-GB",
+      cover: {
+        url: "https://storage.googleapis.com/data4diabetes/cover.jpeg",
+        alt_text: "University of the Aegean",
+      },
+      logo: {
+        url: "https://storage.googleapis.com/data4diabetes/sweden.jpg",
+        alt_text: "University of the Aegean",
+      },
+      description:
+        "For queries about how we are managing your data please contact the Data Protection Officer.",
+    },
+    credentials_supported: [
+      {
+        format: "jwt_vc",
+        types: [
+          "VerifiableCredential",
+          "VerifiableAttestation",
+          "CTWalletSameDeferred",
+        ],
+        trust_framework: {
+          name: "ebsi",
+          type: "Accreditation",
+          uri: "TIR link towards accreditation",
+        },
+        display: [{ name: "Conformance tests deferred", locale: "en-GB" }],
+      },
+      {
+        format: "jwt_vc",
+        types: [
+          "VerifiableCredential",
+          "VerifiableAttestation",
+          "CTWalletSamePreAuthorised",
+        ],
+        trust_framework: {
+          name: "ebsi",
+          type: "Accreditation",
+          uri: "TIR link towards accreditation",
+        },
+        display: [
+          { name: "Conformance tests pre-authorised", locale: "en-GB" },
+        ],
+      },
+      {
+        format: "jwt_vc",
+        types: [
+          "VerifiableCredential",
+          "VerifiableAttestation",
+          "CTWalletSameInTime",
+        ],
+        trust_framework: {
+          name: "ebsi",
+          type: "Accreditation",
+          uri: "TIR link towards accreditation",
+        },
+        display: [{ name: "Conformance tests in-time", locale: "en-GB" }],
+      },
+      {
+        format: "jwt_vc",
+        types: ["VerifiableCredential", "VerifiableAttestation", "CTRevocable"],
+        trust_framework: {
+          name: "ebsi",
+          type: "Accreditation",
+          uri: "TIR link towards accreditation",
+        },
+        display: [{ name: "Conformance test revocation", locale: "en-GB" }],
+      },
+      {
+        format: "jwt_vc",
+        types: [
+          "VerifiableCredential",
+          "VerifiableAttestation",
+          "VerifiableAuthorisationToOnboard",
+        ],
+        trust_framework: {
+          name: "ebsi",
+          type: "Accreditation",
+          uri: "TIR link towards accreditation",
+        },
+        display: [
+          { name: "Verifiable Authorisation to onboard", locale: "en-GB" },
+        ],
+      },
+      {
+        format: "jwt_vc",
+        types: [
+          "VerifiableCredential",
+          "VerifiableAttestation",
+          "VerifiableAccreditation",
+          "VerifiableAccreditationToAttest",
+        ],
+        trust_framework: {
+          name: "ebsi",
+          type: "Accreditation",
+          uri: "TIR link towards accreditation",
+        },
+        display: [
+          { name: "Verifiable Accreditation to attest", locale: "en-GB" },
+        ],
+      },
+      {
+        format: "jwt_vc",
+        types: [
+          "VerifiableCredential",
+          "VerifiableAttestation",
+          "VerifiableAccreditation",
+          "VerifiableAccreditationToAccredit",
+        ],
+        trust_framework: {
+          name: "ebsi",
+          type: "Accreditation",
+          uri: "TIR link towards accreditation",
+        },
+        display: [
+          { name: "Verifiable Accreditation to accredit", locale: "en-GB" },
+        ],
+      },
+      {
+        format: "jwt_vc",
+        types: [
+          "VerifiableCredential",
+          "VerifiableAttestation",
+          "VerifiableAuthorisationForTrustChain",
+        ],
+        trust_framework: {
+          name: "ebsi",
+          type: "Accreditation",
+          uri: "TIR link towards accreditation",
+        },
+        display: [
+          {
+            name: "Verifiable Authorisation to issue verifiable tokens",
+            locale: "en-GB",
+          },
+        ],
+      },
+      {
+        format: "jwt_vc",
+        types: [
+          "VerifiableCredential",
+          "VerifiableAttestation",
+          "CTAAQualificationCredential",
+        ],
+        trust_framework: {
+          name: "ebsi",
+          type: "Accreditation",
+          uri: "TIR link towards accreditation",
+        },
+        display: [
+          {
+            name: "Verifiable Attestation Conformance Qualification To Accredit & Authorise",
+            locale: "en-GB",
+          },
+        ],
+      },
+      {
+        format: "jwt_vc",
+        types: [
+          "VerifiableCredential",
+          "VerifiableAttestation",
+          "CTWalletQualificationCredential",
+        ],
+        trust_framework: {
+          name: "ebsi",
+          type: "Accreditation",
+          uri: "TIR link towards accreditation",
+        },
+        display: [
+          {
+            name: "Verifiable Attestation Conformance Qualification Holder Wallet",
+            locale: "en-GB",
+          },
+        ],
+      },
+      {
+        format: "jwt_vc",
+        types: [
+          "VerifiableCredential",
+          "VerifiableAttestation",
+          "CTIssueQualificationCredential",
+        ],
+        trust_framework: {
+          name: "ebsi",
+          type: "Accreditation",
+          uri: "TIR link towards accreditation",
+        },
+        display: [
+          {
+            name: "Verifiable Attestation Conformance Qualification Issue to Holder",
+            locale: "en-GB",
+          },
+        ],
+      },
+    ],
+  });
+});
+
+///presentation_definition_uri
+// this is not called by igrant.io
+app.get("/presentation_definition", async (req, res) => {
+  console.log("CALLED presentation_definition");
+  res.type("application/json").send(presentationDefinitionParam);
 });
 
 app.post("/direct_post", async (req, res) => {
@@ -155,7 +382,7 @@ app.post("/direct_post", async (req, res) => {
     const keyResolver = getResolver();
     const didResolver = new Resolver(keyResolver);
     let didDoc = await didResolver.resolve(didKey); //this is a multibase encoded string
-    let innerJwk= didDoc.didDocument.verificationMethod[0].publicKeyJwk
+    let innerJwk = didDoc.didDocument.verificationMethod[0].publicKeyJwk;
     // console.log("INNER JWK")
     // console.log(innerJwk)
     const innerPem = jwkToPem(innerJwk);
@@ -166,7 +393,15 @@ app.post("/direct_post", async (req, res) => {
   res.sendStatus(200);
 });
 
-function buildJwt(inputDescriptors, state, nonce, client_id, id, redirect_uri) {
+function buildJwt(
+  inputDescriptors,
+  state,
+  nonce,
+  client_id,
+  id,
+  redirect_uri,
+  request_uri
+) {
   let jwtPayload = {
     aud: ngrok,
     client_id: client_id,
@@ -185,8 +420,8 @@ function buildJwt(inputDescriptors, state, nonce, client_id, id, redirect_uri) {
       id: id,
       input_descriptors: inputDescriptors,
     },
-    // response_uri: redirect_uri,
-    redirect_uri: redirect_uri,
+    // request_uri: request_uri,
+    // redirect_uri: redirect_uri,
     response_mode: "direct_post",
     response_type: "vp_token",
     scope: "openid",
@@ -207,10 +442,6 @@ function buildJwt(inputDescriptors, state, nonce, client_id, id, redirect_uri) {
   return token;
 }
 
-function generateNonce(length) {
-  return crypto.randomBytes(length).toString("hex");
-}
-
 function buildVP(
   client_id,
   redirect_uri,
@@ -219,22 +450,27 @@ function buildVP(
   nonce,
   presentation_definition
 ) {
+  //with iGrant.io if you do not include the redirect_uri, the request to the request_uri is never made... and the flow fails
+  // also if you do not include presentation_definition in the request, the igrant.io wallet fails to parse the qr code.
+  //even if you include presentation_definition_uri
   let result =
     "openid://?client_id=" +
     encodeURIComponent(client_id) +
     "&response_type=vp_token" +
     "&scope=openid" +
-    // "&response_uri="+
-    // encodeURIComponent(redirect_uri) +
-    "&response_uri=" +
-    request_uri +
     "&redirect_uri=" +
+    encodeURIComponent(redirect_uri) +
+    "&request_uri=" +
+    encodeURIComponent(request_uri) +
+    "&response_uri=" +
     encodeURIComponent(redirect_uri) +
     "&response_mode=direct_post" +
     "&state=" +
     state +
     "&nonce=" +
     nonce +
+    // "&presentation_definition_uri="+ngrok+"/presentation_definition"
+    // +
     "&presentation_definition=" +
     presentation_definition;
 
@@ -256,42 +492,46 @@ function getHeaderFromToken(token) {
   return decodedToken.header;
 }
 
-function fromP521KeyToJWK(publicKeyHex) {
-  let pkey = publicKeyHex.split("#")[0];
-  console.log("public key");
-  console.log(pkey);
-  // The encoded public key
+// function fromP521KeyToJWK(publicKeyHex) {
+//   let pkey = publicKeyHex.split("#")[0];
+//   console.log("public key");
+//   console.log(pkey);
+//   // The encoded public key
 
-  // Base64Url decode
-  const decodedPublicKeyBinary = atob(
-    pkey.replace(/-/g, "+").replace(/_/g, "/")
-  );
+//   // Base64Url decode
+//   const decodedPublicKeyBinary = atob(
+//     pkey.replace(/-/g, "+").replace(/_/g, "/")
+//   );
 
-  // Convert binary data to hexadecimal
-  const decodedPublicKeyHex = Array.from(decodedPublicKeyBinary)
-    .map((byte) => byte.charCodeAt(0).toString(16).padStart(2, "0"))
-    .join("");
+//   // Convert binary data to hexadecimal
+//   const decodedPublicKeyHex = Array.from(decodedPublicKeyBinary)
+//     .map((byte) => byte.charCodeAt(0).toString(16).padStart(2, "0"))
+//     .join("");
 
-  // Output the result
-  const cleanedHex = decodedPublicKeyHex.replace("#", "");
+//   // Output the result
+//   const cleanedHex = decodedPublicKeyHex.replace("#", "");
 
-  // Convert the cleaned hex to Buffer
-  const publicKeyBuffer = Buffer.from(cleanedHex, "hex");
-  console.log(publicKeyBuffer.length);
-  // Check if the buffer length is as expected (132 bytes for P-521)
-  //   if (publicKeyBuffer.length !== 132) {
-  //     throw new Error("Invalid P-521 public key length");
-  //   }
+//   // Convert the cleaned hex to Buffer
+//   const publicKeyBuffer = Buffer.from(cleanedHex, "hex");
+//   console.log(publicKeyBuffer.length);
+//   // Check if the buffer length is as expected (132 bytes for P-521)
+//   //   if (publicKeyBuffer.length !== 132) {
+//   //     throw new Error("Invalid P-521 public key length");
+//   //   }
 
-  // Convert the Buffer to a JSON Web Key (JWK)
-  const jwk = {
-    kty: "EC",
-    crv: "P-521",
-    x: publicKeyBuffer.slice(0, 66).toString("base64url"),
-    y: publicKeyBuffer.slice(66).toString("base64url"),
-  };
+//   // Convert the Buffer to a JSON Web Key (JWK)
+//   const jwk = {
+//     kty: "EC",
+//     crv: "P-521",
+//     x: publicKeyBuffer.slice(0, 66).toString("base64url"),
+//     y: publicKeyBuffer.slice(66).toString("base64url"),
+//   };
 
-  return jwk;
+//   return jwk;
+// }
+
+function generateNonce(length) {
+  return crypto.randomBytes(length).toString("hex");
 }
 
 // Start the server
