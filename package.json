@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "NGROK=https://60c3-2a02-587-2805-2e00-a545-e3c4-1abd-e990.ngrok-free.app node app.js"
+    "start": "NGROK=https://39f7-2a02-587-2805-2e00-77a1-e8ed-960d-7004.ngrok-free.app node app.js"
   },
   "author": "",
   "license": "ISC",

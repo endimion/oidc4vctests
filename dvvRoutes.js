@@ -8,6 +8,7 @@ import { Resolver } from "did-resolver";
 import { getResolver } from "@cef-ebsi/key-did-resolver";
 import crypto from "crypto";
 import { util } from "@cef-ebsi/key-did-resolver";
+import base58 from "bs58";
 
 const dvvRouter = express.Router();
 
@@ -16,77 +17,54 @@ const ngrok = process.env.NGROK;
 const privateKey = fs.readFileSync("./private_key_384.pem", "utf-8");
 const publicKey = fs.readFileSync("./public_key_384.pem", "utf-8");
 
+// Generate X25519 key pair
+const privateKeyEncrypt = fs.readFileSync("privateEnc.pem");
+// Read public key from file
+const publicKeyEncrypt = fs.readFileSync("publicEnc.pem");
+
+// console.log(privateKeyEncrypt)
+// console.log(publicKeyEncrypt)
+
+// Encode the public key in Base58 format
+const publicKeyEncBase58 = base58.encode(publicKeyEncrypt);
+
+// Create the JWK object
+const jwkEncryption = {
+  kty: "OKP",
+  crv: "X25519",
+  x: publicKeyEncBase58,
+};
+
+console.log("JWK Encryption Key:", jwkEncryption);
+
 dvvRouter.use(express.json());
 dvvRouter.use(express.urlencoded({ extended: true }));
 
 let presentationDefinitionParam;
-let jwtToken = "";
+let vpRequestJWT = "";
 
 // make our own did:key based on our jwks
 // did-key-format := did:key:MULTIBASE(base58-btc, MULTICODEC(public-key-type, raw-public-key-bytes))
 const jwk = pemToJWK(publicKey, "public");
+console.log("*******************");
 console.log(jwk);
+console.log("*******************");
 
 const did = `did:web:${ngrok.replace("https://", "")}:dvv:testKey`; //util.createDid(jwk);
-console.log(`my did:web DID is ${did}`);
+// console.log(`my did:web DID is ${did}`);
 
 // Define your /makeVP endpoint handling logic
 dvvRouter.get("/makeVP", async (req, res) => {
   try {
-    // Get the presentation_definition parameter
-    presentationDefinitionParam = {
-      id: "",
-      format: {
-        sd_jwt: {
-          alg: ["ES384"],
-        },
-        kb_jwt: {
-          alg: ["ES256"],
-        },
-      },
-      input_descriptors: [
-        {
-          id: "given_name",
-          constraints: {
-            fields: [
-              {
-                path: ["$.iss"],
-                filter: {
-                  const: "fi.dvv.digiid",
-                },
-              },
-              {
-                path: ["$.credentialSubject.given_name"],
-                filter: {
-                  type: "string",
-                },
-              },
-            ],
-          },
-        },
-      ],
-    };
-
     const uuid = uuidv4();
-
     //url.searchParams.get("presentation_definition");
     const stateParam = uuidv4();
     const nonce = generateNonce(16);
-
     let request_uri = ngrok + "/dvv/vpRequest";
     const response_uri = ngrok + "/dvv/direct_post";
 
-    /*
-     inputDescriptors,
-  state,
-  nonce,
-  client_id,
-  id,
-  redirect_uri,
-  jwks
-    */
-    jwtToken = buildJwt(
-      presentationDefinitionParam.input_descriptors,
+    //buildVpRequestJwt(state, nonce, client_id, id, redirect_uri, jwks)
+    vpRequestJWT = buildVpRequestJwt(
       stateParam,
       nonce,
       did,
@@ -108,98 +86,70 @@ dvvRouter.get("/makeVP", async (req, res) => {
 // Define your /vpRequest endpoint handling logic
 dvvRouter.get("/vpRequest", async (req, res) => {
   console.log("VPRequest called Will send JWT");
-  console.log(jwtToken);
-  res.send(jwtToken);
+  console.log(vpRequestJWT);
+  res.send(vpRequestJWT);
 });
 
-dvvRouter.get("/presentation_definition", async (req, res) => {
-  console.log("CALLED presentation_definition");
-  res.type("application/json").send(presentationDefinitionParam);
-});
+// dvvRouter.get("/presentation_definition", async (req, res) => {
+//   console.log("CALLED presentation_definition");
+//   res.type("application/json").send(presentationDefinitionParam);
+// });
 
 // this is the did:web endpoint to get the did document
-dvvRouter.get("/testKey/did.json", async (req, res) => {
-  console.log("CALLED /dvv/testkey");
-  res.type("application/json").send({
-    id: `${did}`,
-    verificationMethod: [
-      {
-        id: `${did}#authentication-key`,
-        type: "JsonWebKey2020",
-        controller: `${did}`,
-        publicKeyJwk: jwk,
-      },
-    ],
-    authentication: [`${did}#authentication-key`],
-  });
-});
+dvvRouter.get(
+  ["/testKey/did.json", "/testkey/.well-known/did.json"],
+  async (req, res) => {
+    console.log("CALLED /dvv/testkey");
+    const response = {
+      id: `${did}`,
+      verificationMethod: [
+        {
+          id: `${did}#authentication-key`,
+          type: "JsonWebKey2020",
+          // controller: `${ngrok}`,
+          publicKeyJwk: { ...jwk },
+        },
+        {
+          ...jwkEncryption,
+          id: `${did}#enc-key`,
+          type: "X25519KeyAgreementKey2019",
+          // controller: `${ngrok}`,
+        },
+      ],
+      authentication: [`${did}#authentication-key`],
+      keyAgreement: [`${did}#enc-key`],
+    };
+    console.log(response);
+    res.type("application/json").send(response);
+  }
+);
 
 dvvRouter.post("/direct_post", async (req, res) => {
   console.log("dvv/direct_post VP is below!");
-  // for (const [fieldName, fieldValue] of Object.entries(req.body)) {
-  //   console.log(`${fieldName}: ${fieldValue}`);
-  // }
-  let vp = req.body["vp_token"];
-  let state = req.body["state"]; //the state, i.e. request id
-  console.log(vp);
-  let header = getHeaderFromToken(vp);
-  // console.log(header);
-  let kid = header.kid;
-  let issuerJwk = header.jwk;
-  if (kid.includes("did:key")) {
-    const keyResolver = getResolver();
-    const didResolver = new Resolver(keyResolver);
-    const doc = await didResolver.resolve(kid);
-    // console.log(doc);
+  for (const [fieldName, fieldValue] of Object.entries(req.body)) {
+    console.log(`${fieldName}: ${fieldValue}`);
   }
-  const pem = jwkToPem(issuerJwk);
-  const decoded = jwt.verify(vp, pem, { ignoreNotBefore: true });
-  //console.log(decoded)
-  const vcs = decoded.vp.verifiableCredential;
-  let vcHeader;
-  let vcKid;
-  vcs.forEach(async (vc) => {
-    vcHeader = getHeaderFromToken(vc);
-    console.log(vcHeader);
-    vcKid = vcHeader.kid;
-    let didKey = vcKid.split("#")[0];
-    const keyResolver = getResolver();
-    const didResolver = new Resolver(keyResolver);
-    let didDoc = await didResolver.resolve(didKey); //this is a multibase encoded string
-    let innerJwk = didDoc.didDocument.verificationMethod[0].publicKeyJwk;
-    // console.log("INNER JWK")
-    // console.log(innerJwk)
-    const innerPem = jwkToPem(innerJwk);
-    let decodedVC = jwt.verify(vc, innerPem, { ignoreNotBefore: true });
-    console.log(decodedVC);
-  });
+  let response = req.body["response"];
+  let state = req.body["state"];
+  console.log(response);
 
   res.sendStatus(200);
 });
 
 //UTILS TODO move to a different file
-function buildJwt(
-  inputDescriptors,
-  state,
-  nonce,
-  client_id,
-  id,
-  redirect_uri,
-  jwks
-) {
+function buildVpRequestJwt(state, nonce, client_id, id, redirect_uri, jwks) {
   let jwtPayload = {
-    aud: ngrok, //this doesnt seem to matter mock value...
+    aud: "https://self-issued.me/v2", //aud: ngrok, //ngrok this doesnt seem to matter mock value...
     //the did of the client is added as client_id,
     //a DID web was added here. To resolve a did:web you go to did:web:test.id.cloud.dvv.fi:test-rp-ui ->>  https://test.id.cloud.dvv.fi/test-rp-ui/did.json
     exp: Math.floor(Date.now() / 1000) + 60 * 60,
     nbf: Math.floor(Date.now() / 1000),
+    iss: ngrok + "/dvv",
 
     client_id: client_id,
     client_metadata: {
       jwks: {
-        keys: [jwks], //the jwks keys (assumin that are used to sign the jwt?)
-        // missing "use": "keyAgreement",
-        //missing  "kid": "QnE33F6_5oCP5dQ61Tufyj5GsSmBDAomAsimbxW3RyQ",
+        keys: [{ ...jwk, kid: `${did}#authentication-key` }],
       },
       vp_formats: {
         sd_jwt: {
@@ -220,7 +170,27 @@ function buildJwt(
         },
       },
       id: id,
-      input_descriptors: inputDescriptors,
+      input_descriptors: [
+        {
+          id: "given_name",
+          constraints: {
+            fields: [
+              {
+                path: ["$.iss"],
+                filter: {
+                  const: "fi.dvv.digiid",
+                },
+              },
+              {
+                path: ["$.credentialSubject.given_name"],
+                filter: {
+                  type: "string",
+                },
+              },
+            ],
+          },
+        },
+      ],
     },
     redirect_uri: redirect_uri,
     response_type: "vp_token",
@@ -240,8 +210,16 @@ function buildJwt(
     header,
   });
 
+  // console.log("jwt generated" + token)
   return token;
 }
+
+//TODO this is missing the aud that should resolve to the issuer to fetch the jwks of the issuer of the vpRequest (jwt)
+dvvRouter.get(["/", "/jwks"], (req, res) => {
+  console.log("DVV ROUTE ./jwks CALLED!!!!!!");
+  console.log(jwk);
+  res.json({ keys: [{ ...jwk, kid: `${did}#authentication-key` }] });
+});
 
 function buildVP(
   client_id, //did
