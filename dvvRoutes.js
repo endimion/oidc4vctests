@@ -9,6 +9,7 @@ import { getResolver } from "@cef-ebsi/key-did-resolver";
 import crypto from "crypto";
 import { util } from "@cef-ebsi/key-did-resolver";
 import base58 from "bs58";
+import * as jose from "jose";
 
 const dvvRouter = express.Router();
 
@@ -35,7 +36,7 @@ const jwkEncryption = {
   x: publicKeyEncBase58,
 };
 
-console.log("JWK Encryption Key:", jwkEncryption);
+// console.log("JWK Encryption Key:", jwkEncryption);
 
 dvvRouter.use(express.json());
 dvvRouter.use(express.urlencoded({ extended: true }));
@@ -46,11 +47,11 @@ let vpRequestJWT = "";
 // make our own did:key based on our jwks
 // did-key-format := did:key:MULTIBASE(base58-btc, MULTICODEC(public-key-type, raw-public-key-bytes))
 const jwk = pemToJWK(publicKey, "public");
-console.log("*******************");
-console.log(jwk);
-console.log("*******************");
+// console.log("*******************");
+// console.log(jwk);
+// console.log("*******************");
 
-const did = `did:web:${ngrok.replace("https://", "")}:dvv:testKey`; //util.createDid(jwk);
+const did = `did:web:${ngrok.replace("https://", "")}:dvv`; //util.createDid(jwk);
 // console.log(`my did:web DID is ${did}`);
 
 // Define your /makeVP endpoint handling logic
@@ -90,39 +91,48 @@ dvvRouter.get("/vpRequest", async (req, res) => {
   res.send(vpRequestJWT);
 });
 
-// dvvRouter.get("/presentation_definition", async (req, res) => {
-//   console.log("CALLED presentation_definition");
-//   res.type("application/json").send(presentationDefinitionParam);
-// });
-
 // this is the did:web endpoint to get the did document
-dvvRouter.get(
-  ["/testKey/did.json", "/testkey/.well-known/did.json"],
-  async (req, res) => {
-    console.log("CALLED /dvv/testkey");
-    const response = {
-      id: `${did}`,
-      verificationMethod: [
-        {
-          id: `${did}#authentication-key`,
-          type: "JsonWebKey2020",
-          // controller: `${ngrok}`,
-          publicKeyJwk: { ...jwk },
-        },
-        {
-          ...jwkEncryption,
-          id: `${did}#enc-key`,
-          type: "X25519KeyAgreementKey2019",
-          // controller: `${ngrok}`,
-        },
-      ],
-      authentication: [`${did}#authentication-key`],
-      keyAgreement: [`${did}#enc-key`],
-    };
-    console.log(response);
-    res.type("application/json").send(response);
-  }
-);
+dvvRouter.get(["/jwks"], async (req, res) => {
+  console.log("CALLED /jwks");
+  console.log("Requested URL:", req.url);
+  const response = {
+    keys: [{ ...jwk, use: "sig", kid: `aegean#authentication-key` }],
+  };
+
+  console.log(JSON.stringify(response, undefined, 2));
+  res.type("application/json").send(response);
+});
+
+dvvRouter.get(["/.well-known/did.json", "/did.json"], async (req, res) => {
+  console.log("Requested URL:", req.url);
+  const response = {
+    "@context": "https://www.w3.org/ns/did/v1",
+    id: `${did}`,
+    verificationMethod: [
+      {
+        id: `aegean#authentication-key`,
+        type: "JsonWebKey2020",
+        controller: `${did}`,
+        publicKeyJwk: { ...jwk },
+      },
+      {
+        ...jwkEncryption,
+        id: `aegean#enc-key`,
+        type: "X25519KeyAgreementKey2019",
+        controller: `${did}`,
+        // controller: `${ngrok}`,
+      },
+    ],
+    authentication: [`aegean#authentication-key`],
+    keyAgreement: [`aegean#enc-key`],
+  };
+  /*
+    
+    */
+
+  console.log(JSON.stringify(response, undefined, 2));
+  res.type("application/json").send(response);
+});
 
 dvvRouter.post("/direct_post", async (req, res) => {
   console.log("dvv/direct_post VP is below!");
@@ -132,6 +142,7 @@ dvvRouter.post("/direct_post", async (req, res) => {
   let response = req.body["response"];
   let state = req.body["state"];
   console.log(response);
+  console.log(decryptJWE(response, privateKey));
 
   res.sendStatus(200);
 });
@@ -140,55 +151,164 @@ dvvRouter.post("/direct_post", async (req, res) => {
 function buildVpRequestJwt(state, nonce, client_id, id, redirect_uri, jwks) {
   let jwtPayload = {
     aud: "https://self-issued.me/v2", //aud: ngrok, //ngrok this doesnt seem to matter mock value...
-    //the did of the client is added as client_id,
-    //a DID web was added here. To resolve a did:web you go to did:web:test.id.cloud.dvv.fi:test-rp-ui ->>  https://test.id.cloud.dvv.fi/test-rp-ui/did.json
-    exp: Math.floor(Date.now() / 1000) + 60 * 60,
+    exp: Math.floor(Date.now() / 1000) + 60 ,
     nbf: Math.floor(Date.now() / 1000),
     iss: ngrok + "/dvv",
-
     client_id: client_id,
     client_metadata: {
       jwks: {
-        keys: [{ ...jwk, kid: `${did}#authentication-key` }],
+        keys: [
+          { ...jwk, kid: `aegean#authentication-key`, use: "sig" },
+          { ...jwk, kid: `aegean#authentication-key`, use: "keyAgreement" },
+          // {
+          //   ...jwkEncryption,
+          //   use: "keyAgreement",
+          //   kid: `aegean#enc-key`,
+
+          //   // controller: `${ngrok}`,
+          // },
+          // {
+          //   crv: "P-256",
+          //   kid: "7c1ec871-29c1-4c23-ac62-7960d23aef05",
+          //   kty: "EC",
+          //   use: "keyAgreement",
+          //   x: "mPBqJh0LpnjSbhyvZMVzeI-rjBmu9xplm5u0pssmYko",
+          //   y: "BF6IrtN8BG6E97nUQ9awjHCQ9sXosmO_6P09HLamxmc",
+          // },
+
+          // {
+          //   crv: "P-384",
+          //   kid: "44969b4a-48d6-442a-98ac-34bff24f5da3",
+          //   kty: "EC",
+          //   use: "sig",
+          //   x: "PjAakaRoG2tOfmFVRnfReU9SBqXF2x2n5XkKb-NAL5bjUvpJnwXPXzLOKUxU2zmt",
+          //   y: "9R-Xm3Frz0oPpya6VyD9PLE7teoMQ0fLXRTEMcohW5rZzMzmwRSonar1-y51xudq",
+          // },
+          // {
+          //   crv: "P-384",
+          //   kid: "209553f2-26ba-4b8d-b578-557488a3a952",
+          //   kty: "EC",
+          //   use: "keyAgreement",
+          //   x: "AaCSSGVmX_GwiMsIgqeas5nHiMdRa-a2_phqwZNjtugqjWCQRVAaV8ipSeAFXGs9",
+          //   y: "RTCwd4cZeQoG-tAVTl-WCpX0YFXCPArjxNz35c41ql4IoYT1sJz3efxj-0y8tF6U",
+          // },
+        ],
       },
       vp_formats: {
-        sd_jwt: {
-          alg: ["ES384"],
-        },
         kb_jwt: {
           alg: ["ES256"],
+        },
+        sd_jwt: {
+          alg: ["ES384"],
         },
       },
     },
     presentation_definition: {
       format: {
-        sd_jwt: {
-          alg: ["ES384"],
-        },
         kb_jwt: {
           alg: ["ES256"],
         },
+        sd_jwt: {
+          alg: ["ES384"],
+        },
       },
-      id: id,
+      id: "56e35ba0-fa9b-4bcc-a67f-ab82187ae401",
       input_descriptors: [
         {
-          id: "given_name",
           constraints: {
             fields: [
               {
-                path: ["$.iss"],
                 filter: {
                   const: "fi.dvv.digiid",
                 },
+                path: ["$.iss"],
               },
               {
-                path: ["$.credentialSubject.given_name"],
                 filter: {
                   type: "string",
                 },
+                path: ["$.credentialSubject.given_name"],
               },
             ],
           },
+          id: "given_name",
+        },
+        {
+          constraints: {
+            fields: [
+              {
+                filter: {
+                  const: "fi.dvv.digiid",
+                },
+                path: ["$.iss"],
+              },
+              {
+                filter: {
+                  type: "string",
+                },
+                path: ["$.credentialSubject.family_name"],
+              },
+            ],
+          },
+          id: "family_name",
+        },
+        {
+          constraints: {
+            fields: [
+              {
+                filter: {
+                  const: "fi.dvv.digiid",
+                },
+                path: ["$.iss"],
+              },
+              {
+                filter: {
+                  type: "string",
+                },
+                path: ["$.credentialSubject.birth_date"],
+              },
+            ],
+          },
+          id: "birth_date",
+        },
+        {
+          constraints: {
+            fields: [
+              {
+                filter: {
+                  const: "fi.dvv.digiid",
+                },
+                path: ["$.iss"],
+              },
+              {
+                filter: {
+                  enum: [0, 1, 2, 9],
+                  type: "integer",
+                },
+                path: ["$.credentialSubject.gender"],
+              },
+            ],
+          },
+          id: "gender",
+        },
+        {
+          constraints: {
+            fields: [
+              {
+                filter: {
+                  const: "fi.dvv.digiid",
+                },
+                path: ["$.iss"],
+              },
+              {
+                filter: {
+                  type: "string",
+                },
+                path: ["$.credentialSubject.nationality"],
+              },
+            ],
+          },
+          id: "nationality",
         },
       ],
     },
@@ -202,11 +322,16 @@ function buildVpRequestJwt(state, nonce, client_id, id, redirect_uri, jwks) {
 
   const header = {
     alg: "ES384",
-    kid: `${did}#authentication-key`,
+    kid: `aegean#authentication-key`,
   };
 
+  // const token = jwt.sign(jwtPayload, privateKey, {
+  //   algorithm: "ES384",
+  //   header,
+  // });
   const token = jwt.sign(jwtPayload, privateKey, {
     algorithm: "ES384",
+    noTimestamp: true,
     header,
   });
 
@@ -214,10 +339,9 @@ function buildVpRequestJwt(state, nonce, client_id, id, redirect_uri, jwks) {
   return token;
 }
 
-//TODO this is missing the aud that should resolve to the issuer to fetch the jwks of the issuer of the vpRequest (jwt)
 dvvRouter.get(["/", "/jwks"], (req, res) => {
   console.log("DVV ROUTE ./jwks CALLED!!!!!!");
-  console.log(jwk);
+  // console.log(jwk);
   res.json({ keys: [{ ...jwk, kid: `${did}#authentication-key` }] });
 });
 
@@ -263,6 +387,21 @@ function pemToJWK(pem, keyType) {
   }
 
   return jwk;
+}
+
+async function decryptJWE(jweToken, privateKeyPEM) {
+  try {
+    const privateKey = crypto.createPrivateKey(privateKeyPEM);
+
+    // Decrypt the JWE using the private key
+    const decryptedPayload = await jose.jwtDecrypt(jweToken, privateKey);
+    // Return the decrypted payload
+    console.log(decryptedPayload)
+    return decryptedPayload.vp_token;
+  } catch (error) {
+    console.error("Error decrypting JWE:", error.message);
+    throw error;
+  }
 }
 
 export default dvvRouter;

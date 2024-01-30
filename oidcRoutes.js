@@ -36,6 +36,10 @@ oidcRouter.get(["/", "/jwks"], (req, res) => {
   console.log("ROUTE ./jwks CALLED!!!!!!")
   res.json({ keys: jwks });
 });
+
+
+
+
 oidcRouter.get("/.well-known/openid-credential-issuer", async (req, res) => {
   console.log(".well-known/openid-credential-issuer called Will send");
 
