@@ -58,13 +58,10 @@ const did = `did:web:${ngrok.replace("https://", "")}:dvv`; //util.createDid(jwk
 dvvRouter.get("/makeVP", async (req, res) => {
   try {
     const uuid = uuidv4();
-    //url.searchParams.get("presentation_definition");
     const stateParam = uuidv4();
     const nonce = generateNonce(16);
     let request_uri = ngrok + "/dvv/vpRequest";
     const response_uri = ngrok + "/dvv/direct_post";
-
-    //buildVpRequestJwt(state, nonce, client_id, id, redirect_uri, jwks)
     vpRequestJWT = buildVpRequestJwt(
       stateParam,
       nonce,
@@ -73,9 +70,7 @@ dvvRouter.get("/makeVP", async (req, res) => {
       response_uri,
       jwk
     );
-
     const vpRequest = buildVP(did, request_uri);
-
     res.json({ vpRequest: vpRequest });
   } catch (err) {
     console.log(err);
@@ -91,18 +86,19 @@ dvvRouter.get("/vpRequest", async (req, res) => {
   res.send(vpRequestJWT);
 });
 
-// this is the did:web endpoint to get the did document
+// this is not called in did:web resolution, however it is called in classic OIDC4VP
+// NOT Necessary
 dvvRouter.get(["/jwks"], async (req, res) => {
-  console.log("CALLED /jwks");
   console.log("Requested URL:", req.url);
   const response = {
     keys: [{ ...jwk, use: "sig", kid: `aegean#authentication-key` }],
   };
-
   console.log(JSON.stringify(response, undefined, 2));
   res.type("application/json").send(response);
 });
 
+// the /did.json is called based on the did:web spec to get the 
+// public jwks of the verifier
 dvvRouter.get(["/.well-known/did.json", "/did.json"], async (req, res) => {
   console.log("Requested URL:", req.url);
   const response = {
@@ -120,20 +116,16 @@ dvvRouter.get(["/.well-known/did.json", "/did.json"], async (req, res) => {
         id: `aegean#enc-key`,
         type: "X25519KeyAgreementKey2019",
         controller: `${did}`,
-        // controller: `${ngrok}`,
       },
     ],
     authentication: [`aegean#authentication-key`],
     keyAgreement: [`aegean#enc-key`],
   };
-  /*
-    
-    */
-
-  console.log(JSON.stringify(response, undefined, 2));
+  // console.log(JSON.stringify(response, undefined, 2));
   res.type("application/json").send(response);
 });
 
+// endpoint the receives the sd-jwt response from the wallet
 dvvRouter.post("/direct_post", async (req, res) => {
   console.log("dvv/direct_post VP is below!");
   // for (const [fieldName, fieldValue] of Object.entries(req.body)) {
@@ -151,9 +143,10 @@ dvvRouter.post("/direct_post", async (req, res) => {
 });
 
 //UTILS TODO move to a different file
+// builds the VP request
 function buildVpRequestJwt(state, nonce, client_id, id, redirect_uri, jwks) {
   let jwtPayload = {
-    aud: "https://self-issued.me/v2", //aud: ngrok, //ngrok this doesnt seem to matter mock value...
+    aud: "https://self-issued.me/v2", //this value is important based on SIOPv2. https://self-issued.me/v2 has specific semantics
     exp: Math.floor(Date.now() / 1000) + 60,
     nbf: Math.floor(Date.now() / 1000),
     iss: ngrok + "/dvv",
@@ -162,39 +155,7 @@ function buildVpRequestJwt(state, nonce, client_id, id, redirect_uri, jwks) {
       jwks: {
         keys: [
           { ...jwk, kid: `aegean#authentication-key`, use: "sig" },
-          { ...jwk, kid: `aegean#authentication-key`, use: "keyAgreement" },
-          // {
-          //   ...jwkEncryption,
-          //   use: "keyAgreement",
-          //   kid: `aegean#enc-key`,
-
-          //   // controller: `${ngrok}`,
-          // },
-          // {
-          //   crv: "P-256",
-          //   kid: "7c1ec871-29c1-4c23-ac62-7960d23aef05",
-          //   kty: "EC",
-          //   use: "keyAgreement",
-          //   x: "mPBqJh0LpnjSbhyvZMVzeI-rjBmu9xplm5u0pssmYko",
-          //   y: "BF6IrtN8BG6E97nUQ9awjHCQ9sXosmO_6P09HLamxmc",
-          // },
-
-          // {
-          //   crv: "P-384",
-          //   kid: "44969b4a-48d6-442a-98ac-34bff24f5da3",
-          //   kty: "EC",
-          //   use: "sig",
-          //   x: "PjAakaRoG2tOfmFVRnfReU9SBqXF2x2n5XkKb-NAL5bjUvpJnwXPXzLOKUxU2zmt",
-          //   y: "9R-Xm3Frz0oPpya6VyD9PLE7teoMQ0fLXRTEMcohW5rZzMzmwRSonar1-y51xudq",
-          // },
-          // {
-          //   crv: "P-384",
-          //   kid: "209553f2-26ba-4b8d-b578-557488a3a952",
-          //   kty: "EC",
-          //   use: "keyAgreement",
-          //   x: "AaCSSGVmX_GwiMsIgqeas5nHiMdRa-a2_phqwZNjtugqjWCQRVAaV8ipSeAFXGs9",
-          //   y: "RTCwd4cZeQoG-tAVTl-WCpX0YFXCPArjxNz35c41ql4IoYT1sJz3efxj-0y8tF6U",
-          // },
+          { ...jwk, kid: `aegean#authentication-key`, use: "keyAgreement" }, //key to encrypt the sd-jwt response
         ],
       },
       vp_formats: {
@@ -420,26 +381,20 @@ function buildVpRequestJwt(state, nonce, client_id, id, redirect_uri, jwks) {
 
   const header = {
     alg: "ES384",
-    kid: `aegean#authentication-key`,
+    kid: `aegean#authentication-key`, //this kid needs to be resolvable from the did.json endpoint
   };
 
-  // const token = jwt.sign(jwtPayload, privateKey, {
-  //   algorithm: "ES384",
-  //   header,
-  // });
   const token = jwt.sign(jwtPayload, privateKey, {
     algorithm: "ES384",
     noTimestamp: true,
     header,
   });
-
-  // console.log("jwt generated" + token)
   return token;
 }
 
+//oidc endpoint not called for did:web
 dvvRouter.get(["/", "/jwks"], (req, res) => {
   console.log("DVV ROUTE ./jwks CALLED!!!!!!");
-  // console.log(jwk);
   res.json({ keys: [{ ...jwk, kid: `${did}#authentication-key` }] });
 });
 
@@ -455,20 +410,6 @@ function buildVP(
   return result;
 }
 
-function getHeaderFromToken(token) {
-  const decodedToken = jwt.decode(token, {
-    complete: true,
-  });
-
-  if (!decodedToken) {
-    throw new Parse.Error(
-      Parse.Error.OBJECT_NOT_FOUND,
-      `provided token does not decode as JWT`
-    );
-  }
-
-  return decodedToken.header;
-}
 function generateNonce(length) {
   return crypto.randomBytes(length).toString("hex");
 }
