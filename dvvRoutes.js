@@ -136,13 +136,16 @@ dvvRouter.get(["/.well-known/did.json", "/did.json"], async (req, res) => {
 
 dvvRouter.post("/direct_post", async (req, res) => {
   console.log("dvv/direct_post VP is below!");
-  for (const [fieldName, fieldValue] of Object.entries(req.body)) {
-    console.log(`${fieldName}: ${fieldValue}`);
-  }
+  // for (const [fieldName, fieldValue] of Object.entries(req.body)) {
+  //   console.log(`***************************>>>>>${fieldName}: ${fieldValue}`);
+  // }
   let response = req.body["response"];
   let state = req.body["state"];
   console.log(response);
-  console.log(decryptJWE(response, privateKey));
+  // console.log(decryptJWE(response, privateKey));
+  let userData = await decryptJWE(response, privateKey)
+  console.log("USER Data")
+  console.log(userData)
 
   res.sendStatus(200);
 });
@@ -151,7 +154,7 @@ dvvRouter.post("/direct_post", async (req, res) => {
 function buildVpRequestJwt(state, nonce, client_id, id, redirect_uri, jwks) {
   let jwtPayload = {
     aud: "https://self-issued.me/v2", //aud: ngrok, //ngrok this doesnt seem to matter mock value...
-    exp: Math.floor(Date.now() / 1000) + 60 ,
+    exp: Math.floor(Date.now() / 1000) + 60,
     nbf: Math.floor(Date.now() / 1000),
     iss: ngrok + "/dvv",
     client_id: client_id,
@@ -204,111 +207,206 @@ function buildVpRequestJwt(state, nonce, client_id, id, redirect_uri, jwks) {
       },
     },
     presentation_definition: {
+      id: "",
       format: {
-        kb_jwt: {
-          alg: ["ES256"],
-        },
         sd_jwt: {
           alg: ["ES384"],
         },
+        kb_jwt: {
+          alg: ["ES256"],
+        },
       },
-      id: "56e35ba0-fa9b-4bcc-a67f-ab82187ae401",
       input_descriptors: [
         {
-          constraints: {
-            fields: [
-              {
-                filter: {
-                  const: "fi.dvv.digiid",
-                },
-                path: ["$.iss"],
-              },
-              {
-                filter: {
-                  type: "string",
-                },
-                path: ["$.credentialSubject.given_name"],
-              },
-            ],
-          },
           id: "given_name",
-        },
-        {
           constraints: {
             fields: [
               {
+                path: ["$.iss"],
                 filter: {
                   const: "fi.dvv.digiid",
                 },
-                path: ["$.iss"],
               },
               {
+                path: ["$.credentialSubject.given_name"],
                 filter: {
                   type: "string",
                 },
-                path: ["$.credentialSubject.family_name"],
               },
             ],
           },
+        },
+        {
           id: "family_name",
-        },
-        {
           constraints: {
             fields: [
               {
+                path: ["$.iss"],
                 filter: {
                   const: "fi.dvv.digiid",
                 },
-                path: ["$.iss"],
               },
               {
+                path: ["$.credentialSubject.family_name"],
                 filter: {
                   type: "string",
                 },
-                path: ["$.credentialSubject.birth_date"],
               },
             ],
           },
+        },
+        {
           id: "birth_date",
-        },
-        {
           constraints: {
             fields: [
               {
+                path: ["$.iss"],
                 filter: {
                   const: "fi.dvv.digiid",
                 },
-                path: ["$.iss"],
               },
               {
-                filter: {
-                  enum: [0, 1, 2, 9],
-                  type: "integer",
-                },
-                path: ["$.credentialSubject.gender"],
-              },
-            ],
-          },
-          id: "gender",
-        },
-        {
-          constraints: {
-            fields: [
-              {
-                filter: {
-                  const: "fi.dvv.digiid",
-                },
-                path: ["$.iss"],
-              },
-              {
+                path: ["$.credentialSubject.birth_date"],
                 filter: {
                   type: "string",
                 },
-                path: ["$.credentialSubject.nationality"],
               },
             ],
           },
+        },
+        {
+          id: "age_over_15",
+          constraints: {
+            fields: [
+              {
+                path: ["$.iss"],
+                filter: {
+                  const: "fi.dvv.digiid",
+                },
+              },
+              {
+                path: ["$.credentialSubject.age_over_15"],
+                filter: {
+                  type: "boolean",
+                },
+              },
+            ],
+          },
+        },
+        {
+          id: "age_over_18",
+          constraints: {
+            fields: [
+              {
+                path: ["$.iss"],
+                filter: {
+                  const: "fi.dvv.digiid",
+                },
+              },
+              {
+                path: ["$.credentialSubject.age_over_18"],
+                filter: {
+                  type: "boolean",
+                },
+              },
+            ],
+          },
+        },
+        {
+          id: "age_over_20",
+          constraints: {
+            fields: [
+              {
+                path: ["$.iss"],
+                filter: {
+                  const: "fi.dvv.digiid",
+                },
+              },
+              {
+                path: ["$.credentialSubject.age_over_20"],
+                filter: {
+                  type: "boolean",
+                },
+              },
+            ],
+          },
+        },
+        {
+          id: "gender",
+          constraints: {
+            fields: [
+              {
+                path: ["$.iss"],
+                filter: {
+                  const: "fi.dvv.digiid",
+                },
+              },
+              {
+                path: ["$.credentialSubject.gender"],
+                filter: {
+                  type: "integer",
+                  enum: [0, 1, 2, 9],
+                },
+              },
+            ],
+          },
+        },
+        {
           id: "nationality",
+          constraints: {
+            fields: [
+              {
+                path: ["$.iss"],
+                filter: {
+                  const: "fi.dvv.digiid",
+                },
+              },
+              {
+                path: ["$.credentialSubject.nationality"],
+                filter: {
+                  type: "string",
+                },
+              },
+            ],
+          },
+        },
+        {
+          id: "personal_identity_code",
+          constraints: {
+            fields: [
+              {
+                path: ["$.iss"],
+                filter: {
+                  const: "fi.dvv.digiid",
+                },
+              },
+              {
+                path: ["$.credentialSubject.personal_identity_code"],
+                filter: {
+                  type: "string",
+                },
+              },
+            ],
+          },
+        },
+        {
+          id: "unique_id",
+          constraints: {
+            fields: [
+              {
+                path: ["$.iss"],
+                filter: {
+                  const: "fi.dvv.digiid",
+                },
+              },
+              {
+                path: ["$.credentialSubject.unique_id"],
+                filter: {
+                  type: "string",
+                },
+              },
+            ],
+          },
         },
       ],
     },
@@ -395,13 +493,54 @@ async function decryptJWE(jweToken, privateKeyPEM) {
 
     // Decrypt the JWE using the private key
     const decryptedPayload = await jose.jwtDecrypt(jweToken, privateKey);
-    // Return the decrypted payload
-    console.log(decryptedPayload)
-    return decryptedPayload.vp_token;
+    // console.log(decryptedPayload);
+    let presentation_submission =
+      decryptedPayload.payload.presentation_submission;
+    let disclosures = parseVP(decryptedPayload.payload.vp_token);
+    console.log(`diclosures in the VP found`);
+    console.log(disclosures);
+    return disclosures;
   } catch (error) {
     console.error("Error decrypting JWE:", error.message);
     throw error;
   }
 }
+
+/*
+An SD-JWT is composed of the following:
+the Issuer-signed JWT
+The Disclosures
+optionally a Key Binding JWT
+The serialized format for the SD-JWT is the concatenation of each part delineated with a single tilde ('~') character as follows:
+<JWT>~<Disclosure 1>~<Disclosure 2>~...~<Disclosure N>~<optional KB-JWT>
+
+*/
+function parseVP(vp_token) {
+  let vpPartsArray = vp_token.split(".");
+  let disclosuresPart = vpPartsArray[2]; //this is the actual sd-jdt from the vpToken
+
+  let disclosuresArray = disclosuresPart.split("~").slice(1, -1); //get all elements apart form the first and last one
+  // console.log(disclosuresArray);
+  let decodedDisclosuresArray = disclosuresArray.map((element) => {
+    return base64urlDecode(element);
+  });
+  return decodedDisclosuresArray;
+}
+const base64urlDecode = (input) => {
+  // Convert base64url to base64 by adding padding characters
+  const base64 = input
+    .replace(/-/g, "+")
+    .replace(/_/g, "/")
+    .padEnd(input.length + ((4 - (input.length % 4)) % 4), "=");
+  // Decode base64
+  const utf8String = atob(base64);
+  // Convert UTF-8 string to byte array
+  const bytes = new Uint8Array(utf8String.length);
+  for (let i = 0; i < utf8String.length; i++) {
+    bytes[i] = utf8String.charCodeAt(i);
+  }
+  let decodedString = new TextDecoder().decode(bytes);
+  return JSON.parse(decodedString);
+};
 
 export default dvvRouter;
